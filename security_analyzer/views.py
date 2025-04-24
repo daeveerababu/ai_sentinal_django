@@ -1,5 +1,3 @@
-import os
-import json
 import hashlib
 from django.conf import settings
 from django.utils import timezone
@@ -9,13 +7,11 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
-from .models import SecurityScan, SecurityThreat, SpamClassificationModel
+from .models import SecurityScan, SecurityThreat
 from .serializers import (
-    SecurityScanSerializer, 
+    SecurityScanSerializer,
+    SecurityScanRequestSerializer,
     SecurityThreatSerializer,
-    SpamClassificationModelSerializer,
-    TextAnalysisSerializer,
-    FileAnalysisSerializer,
     SpamPredictionSerializer
 )
 from .utils.spam_classifier import SpamDetector
@@ -25,165 +21,118 @@ from .utils.supabase_client import SupabaseClient
 
 class SecurityScanViewSet(viewsets.ModelViewSet):
     """
-    API endpoint for security scans management
+    API endpoint for security scans: file, URL, and IP via VirusTotal.
     """
     queryset = SecurityScan.objects.all()
     serializer_class = SecurityScanSerializer
     permission_classes = [IsAuthenticated]
-    
+
     @action(detail=False, methods=['post'])
-    def scan_text(self, request):
-        """Analyze text for spam/threats"""
-        serializer = TextAnalysisSerializer(data=request.data)
+    def scan(self, request):
+        """
+        Unified scan endpoint: accepts file, url, and/or ip.
+        """
+        serializer = SecurityScanRequestSerializer(data=request.data)
         if serializer.is_valid():
-            text = serializer.validated_data['text']
-            analyze_spam = serializer.validated_data['analyze_spam']
-            
-            # Create a scan record
+            data = serializer.validated_data
+            vt = VirusTotalScanner(api_key=settings.VIRUS_TOTAL_API_KEY)
+
+            # Determine scan_type
+            types = []
+            if data.get('file'):
+                types.append('virus')
+            if data.get('url'):
+                types.append('url')
+            if data.get('ip'):
+                types.append('ip')
+            scan_type = 'combined' if len(types) > 1 else types[0]
+
+            # Create scan record
             scan = SecurityScan.objects.create(
-                scan_type='spam',
-                content=text,
-                scan_status='processing'
+                scan_type=scan_type,
+                content=data.get('url') or data.get('ip'),
+                file_hash=None,
+                file_name=data.get('file').name if data.get('file') else None,
+                scan_status='processing',
+                created_at=timezone.now(),
             )
-            
+
             try:
-                # Perform spam detection
-                if analyze_spam:
-                    spam_detector = SpamDetector()
-                    result = spam_detector.predict(text)
-                    
-                    # Update scan record
-                    scan.result_data = result
-                    scan.scan_status = 'completed'
-                    scan.save()
-                    
-                    # Create threat if spam detected
-                    if result.get('is_spam', False):
-                        SecurityThreat.objects.create(
-                            scan=scan,
-                            threat_type='spam',
-                            severity='medium',
-                            description=f"Spam detected with {result.get('confidence', 0)*100:.1f}% confidence",
-                            metadata={'prediction_details': result}
-                        )
-                        
-                    # Log to Supabase
-                    supabase_client = SupabaseClient()
-                    supabase_client.log_scan_result(scan_id=scan.id, scan_type='spam', result=result)
-                    
+                result = {}
+                # File scan
+                if data.get('file'):
+                    file_result = vt.scan_file(data['file'])
+                    result['file'] = file_result
+                    scan.file_hash = file_result.get('sha256')
+                # URL scan
+                if data.get('url'):
+                    result['url'] = vt.scan_url(data['url'])
+                # IP scan
+                if data.get('ip'):
+                    result['ip'] = vt.scan_ip(data['ip'])
+
+                # Update and save scan
+                scan.result_data = result
+                scan.scan_status = 'completed'
+                scan.updated_at = timezone.now()
+                scan.save()
+
+                # Log to Supabase
+                supabase = SupabaseClient()
+                supabase.log_scan_result(scan_id=scan.id, scan_type=scan_type, result=result)
+
                 return Response(SecurityScanSerializer(scan).data)
-                
             except Exception as e:
                 scan.scan_status = 'failed'
                 scan.result_data = {'error': str(e)}
+                scan.updated_at = timezone.now()
                 scan.save()
                 return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    @action(detail=False, methods=['post'])
-    def scan_file(self, request):
-        """Scan file for viruses/malware"""
-        serializer = FileAnalysisSerializer(data=request.data)
-        if serializer.is_valid():
-            file_obj = serializer.validated_data['file']
-            scan_viruses = serializer.validated_data['scan_viruses']
-            
-            # Calculate file hash
-            hasher = hashlib.sha256()
-            for chunk in file_obj.chunks():
-                hasher.update(chunk)
-            file_hash = hasher.hexdigest()
-            
-            # Create a scan record
-            scan = SecurityScan.objects.create(
-                scan_type='virus',
-                file_name=file_obj.name,
-                file_hash=file_hash,
-                scan_status='processing'
-            )
-            
-            try:
-                # Virus scan
-                if scan_viruses:
-                    scanner = VirusTotalScanner(api_key=settings.VIRUS_TOTAL_API_KEY)
-                    scan_result = scanner.scan_file(file_obj)
-                    
-                    # Update scan record
-                    scan.result_data = scan_result
-                    scan.scan_status = 'completed'
-                    scan.save()
-                    
-                    # Create threat records if threats detected
-                    if scan_result.get('positives', 0) > 0:
-                        SecurityThreat.objects.create(
-                            scan=scan,
-                            threat_type='virus',
-                            severity='high' if scan_result.get('positives', 0) > 5 else 'medium',
-                            description=f"Detected by {scan_result.get('positives', 0)} engines",
-                            metadata={'scan_details': scan_result}
-                        )
-                    
-                    # Log to Supabase
-                    supabase_client = SupabaseClient()
-                    supabase_client.log_scan_result(scan_id=scan.id, scan_type='virus', result=scan_result)
-                    
-                return Response(SecurityScanSerializer(scan).data)
-                
-            except Exception as e:
-                scan.scan_status = 'failed'
-                scan.result_data = {'error': str(e)}
-                scan.save()
-                return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class SpamDetectionAPIView(APIView):
     """
-    API for spam detection
+    API for spam detection using ML model.
     """
     def post(self, request):
         serializer = SpamPredictionSerializer(data=request.data)
         if serializer.is_valid():
             text = serializer.validated_data['text']
-            
             try:
-                # Get prediction
-                spam_detector = SpamDetector()
-                result = spam_detector.predict(text)
-                
-                # Log the prediction to Supabase
-                supabase_client = SupabaseClient()
-                supabase_client.log_prediction(content=text[:500], prediction=result)
-                
+                detector = SpamDetector()
+                result = detector.predict(text)
+
+                # Log to Supabase
+                supabase = SupabaseClient()
+                supabase.log_prediction(content=text[:500], prediction=result)
+
                 return Response({
                     'is_spam': result.get('is_spam', False),
                     'confidence': result.get('confidence', 0),
-                    'prediction': 'spam' if result.get('is_spam', False) else 'ham'
+                    'prediction': 'spam' if result.get('is_spam') else 'ham'
                 })
             except Exception as e:
                 return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class SecurityThreatViewSet(viewsets.ModelViewSet):
     """
-    API endpoint for security threats management
+    API endpoint for managing security threats detected in scans.
     """
     queryset = SecurityThreat.objects.all()
     serializer_class = SecurityThreatSerializer
     permission_classes = [IsAuthenticated]
-    
+
     @action(detail=True, methods=['post'])
     def resolve(self, request, pk=None):
         threat = self.get_object()
         threat.resolve()
-        return Response({'status': 'threat resolved'})
-    
+        return Response({'status': 'resolved'})
+
     @action(detail=False, methods=['get'])
     def unresolved(self, request):
-        threats = SecurityThreat.objects.filter(is_resolved=False)
-        serializer = self.get_serializer(threats, many=True)
+        qs = SecurityThreat.objects.filter(is_resolved=False)
+        serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)

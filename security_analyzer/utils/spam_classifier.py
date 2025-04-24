@@ -1,130 +1,209 @@
 import os
-import numpy as np
-import pickle
 import joblib
+import pandas as pd
+from django.conf import settings
+from django.utils import timezone
+# Adjusted import to reference the correct models module
+from security_analyzer.models import SpamClassificationModel
+
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
-from sklearn.pipeline import Pipeline
-from django.conf import settings
+from sklearn.svm import LinearSVC
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 
 class SpamDetector:
     """
-    Handles text spam detection using scikit-learn models
+    Comprehensive spam detector leveraging scikit-learn.
+    Supports Naive Bayes, SVM, and RandomForest classifiers.
+    Models and vectorizers are versioned and registered via SpamClassificationModel.
     """
-    def __init__(self, model_path=None, vectorizer_path=None):
-        # Default model paths if not specified
-        self.model_path = model_path or os.path.join(settings.BASE_DIR, 'ml_models', 'spam_model.joblib')
-        self.vectorizer_path = vectorizer_path or os.path.join(settings.BASE_DIR, 'ml_models', 'tfidf_vectorizer.joblib')
-        
-        # Create ml_models directory if it doesn't exist
-        os.makedirs(os.path.join(settings.BASE_DIR, 'ml_models'), exist_ok=True)
-        
-        # Load or create model
-        self._load_or_create_model()
-    def _load_or_create_model(self):
-        """Load existing model or create a new one if not available"""
-        try:
-            # Try to load existing model
-            if os.path.exists(self.model_path) and os.path.exists(self.vectorizer_path):
-                self.model = joblib.load(self.model_path)
-                self.vectorizer = joblib.load(self.vectorizer_path)
-                print("Loaded existing spam classification model")
-            else:
-                # Create a simple model with some example data
-                # In production, this should be trained on real data
-                print("Creating new spam classification model")
-                
-                # Example training data
-                X_train = [
-                    "Buy viagra now", "Discount medications", "Win money fast", "Lottery winner",
-                    "You've won millions", "Increase your size", "Free money", "Casino bonus",
-                    "Earn money online", "Work from home", "Congratulations you won", "Claim your prize",
-                    "Urgent business proposal", "Dear beneficiary", "Nigerian prince", "Inheritance claim",
-                    "Enlarge your", "Free access", "Limited time offer", "Amazing opportunity"
-                ]
-                
-                # Example spam labels
-                y_train = [1] * len(X_train)  # All examples are spam (1)
-                
-                # Add some non-spam examples
-                X_train.extend([
-                    "Meeting tomorrow", "Please review document", "Project update", "Lunch today?",
-                    "Family vacation photos", "Job application", "Conference registration", "Question about report",
-                    "Weather forecast", "Traffic update", "Schedule change", "New employee introduction",
-                    "Company newsletter", "Holiday schedule", "System maintenance", "Password reset",
-                    "Invoice attached", "Thank you for your help", "Document review", "Team celebration"
-                ])
-                
-                # Add non-spam labels
-                y_train.extend([0] * 20)  # 20 non-spam examples (0)
-                
-                # Create and train the model
-                self.vectorizer = TfidfVectorizer(max_features=1000)
-                self.model = MultinomialNB()
-                
-                # Transform text data to feature vectors
-                X_train_vec = self.vectorizer.fit_transform(X_train)
-                
-                # Train the model
-                self.model.fit(X_train_vec, y_train)
-                
-                # Save the model and vectorizer
-                joblib.dump(self.model, self.model_path)
-                joblib.dump(self.vectorizer, self.vectorizer_path)
-                print(f"Created and saved new spam classification model to {self.model_path}")
-        
-        except Exception as e:
-            # Fallback to a simple pipeline if loading fails
-            print(f"Error loading or creating model: {str(e)}")
-            print("Creating fallback spam classification model")
-            
-            # Simple pipeline with a basic model
-            self.pipeline = Pipeline([
-                ('vectorizer', TfidfVectorizer(max_features=500)),
-                ('classifier', MultinomialNB())
-            ])
-            
-            # Simple training data
-            X_train = [
-                "Buy now", "Free money", "Discount", "Viagra", "Win", 
-                "Hello", "Meeting", "Project", "Weather", "Family"
+
+    def __init__(self, model_type='nb', retrain=False, data_path=None):
+        """
+        Initialize detector; train or load model based on parameters.
+
+        :param model_type: 'nb', 'svm', or 'rf'
+        :param retrain: force retraining even if model exists
+        :param data_path: optional CSV path with 'text','label' columns
+        """
+        # Set up directories
+        self.base_dir = settings.BASE_DIR
+        self.ml_dir = os.path.join(self.base_dir, 'ml_models')
+        os.makedirs(self.ml_dir, exist_ok=True)
+
+        # Define file paths
+        self.model_type = model_type
+        self.model_file = os.path.join(self.ml_dir, f'spam_model_{model_type}.joblib')
+        self.vectorizer_file = os.path.join(self.ml_dir, f'tfidf_vectorizer_{model_type}.joblib')
+
+        # Load or train
+        if retrain or not (os.path.exists(self.model_file) and os.path.exists(self.vectorizer_file)):
+            self.train_model(data_path)
+        else:
+            self._load_model()
+
+    def _load_model(self):
+        """Load vectorizer and classifier from disk."""
+        self.vectorizer = joblib.load(self.vectorizer_file)
+        self.model = joblib.load(self.model_file)
+
+    def train_model(self, data_path=None, test_size=0.2, random_state=42):
+        """
+        Train and persist a new model. Dataset can be provided or defaults used.
+
+        :returns: dict of training metrics
+        """
+        # Load data
+        if data_path and os.path.exists(data_path):
+            df = pd.read_csv(data_path)
+            texts = df['text'].astype(str).tolist()
+            labels = df['label'].astype(int).tolist()
+        else:
+            # Placeholder data; replace with real dataset
+            texts = [
+                # Spam samples
+                "Win money now!", "Limited time offer", "Earn cash fast", 
+                "Free entry to win", "Claim your prize", "Cheap meds online",
+                # Ham samples
+                "Meeting at 10am", "Please review the attached report", "Lunch tomorrow?",
+                "Happy birthday!", "Project update attached", "See you at the conference"
             ]
-            y_train = [1, 1, 1, 1, 1, 0, 0, 0, 0, 0]  # First 5 are spam, last 5 are not
-            
-            # Train the model
-            self.pipeline.fit(X_train, y_train)
-            
-            # Set model and vectorizer from pipeline components
-            self.model = self.pipeline.named_steps['classifier']
-            self.vectorizer = self.pipeline.named_steps['vectorizer']
-    
-    def predict(self, text):
-        """Predict if text is spam"""
-        try:
-            # Transform text using the vectorizer
-            text_vec = self.vectorizer.transform([text])
-            
-            # Get prediction and probability
-            prediction = self.model.predict(text_vec)[0]
-            probas = self.model.predict_proba(text_vec)[0]
-            
-            # Get confidence of prediction
-            confidence = probas[1] if prediction == 1 else probas[0]
-            
-            return {
-                'is_spam': bool(prediction),
-                'confidence': float(confidence),
-                'spam_score': float(probas[1]),
-                'ham_score': float(probas[0])
+            labels = [1,1,1,1,1,1, 0,0,0,0,0,0]
+
+        # Split dataset
+        X_train, X_test, y_train, y_test = train_test_split(
+            texts, labels, test_size=test_size, random_state=random_state
+        )
+
+        # Vectorize text data
+        self.vectorizer = TfidfVectorizer(
+            max_features=5000,
+            stop_words='english'
+        )
+        X_train_vec = self.vectorizer.fit_transform(X_train)
+
+        # Choose classifier
+        if self.model_type == 'nb':
+            clf = MultinomialNB()
+        elif self.model_type == 'svm':
+            base_clf = LinearSVC(random_state=random_state, max_iter=10000)
+            clf = CalibratedClassifierCV(base_clf)
+        elif self.model_type == 'rf':
+            clf = RandomForestClassifier(
+                n_estimators=100, random_state=random_state, n_jobs=-1
+            )
+        else:
+            raise ValueError(f"Unsupported model_type '{self.model_type}'")
+
+        # Train model
+        self.model = clf.fit(X_train_vec, y_train)
+
+        # Evaluate on test set
+        X_test_vec = self.vectorizer.transform(X_test)
+        y_pred = self.model.predict(X_test_vec)
+        metrics = {
+            'accuracy': accuracy_score(y_test, y_pred),
+            'precision': precision_score(y_test, y_pred),
+            'recall': recall_score(y_test, y_pred),
+            'f1_score': f1_score(y_test, y_pred),
+        }
+
+        # Save vectorizer and model
+        joblib.dump(self.vectorizer, self.vectorizer_file)
+        joblib.dump(self.model, self.model_file)
+
+        # Register model in DB
+        SpamClassificationModel.objects.update(is_active=False)
+        SpamClassificationModel.objects.create(
+            model_name=f"spam_{self.model_type}",
+            model_version=timezone.now().strftime("%Y%m%d%H%M%S"),
+            model_file=os.path.relpath(self.model_file, self.base_dir),
+            feature_extraction_file=os.path.relpath(self.vectorizer_file, self.base_dir),
+            accuracy=metrics['accuracy'],
+            precision=metrics['precision'],
+            recall=metrics['recall'],
+            f1_score=metrics['f1_score'],
+            is_active=True,
+        )
+        return metrics
+
+    def predict(self, text: str) -> dict:
+        """
+        Predict spam/ham and return probabilities.
+
+        :param text: raw email or message body
+        :returns: dict with keys 'is_spam','confidence','spam_score','ham_score'
+        """
+        if not hasattr(self, 'model') or not hasattr(self, 'vectorizer'):
+            self._load_model()
+
+        vec = self.vectorizer.transform([text])
+        pred = self.model.predict(vec)[0]
+
+        # Handle classifiers without predict_proba
+        if hasattr(self.model, 'predict_proba'):
+            probas = self.model.predict_proba(vec)[0]
+            confidence = float(probas[pred])
+            spam_score = float(probas[1])
+            ham_score = float(probas[0])
+        else:
+            # Use decision function if available
+            if hasattr(self.model, 'decision_function'):
+                score = self.model.decision_function(vec)[0]
+                confidence = abs(float(score))
+                spam_score = float(score) if score > 0 else 0.0
+                ham_score = 1.0 - spam_score
+            else:
+                confidence = 0.0
+                spam_score = 1.0 if pred == 1 else 0.0
+                ham_score = 1.0 - spam_score
+
+        return {
+            'is_spam': bool(pred),
+            'confidence': confidence,
+            'spam_score': spam_score,
+            'ham_score': ham_score,
+        }
+
+    def list_models(self) -> list:
+        """
+        List all registered models with metadata.
+        """
+        qs = SpamClassificationModel.objects.order_by('-created_at')
+        return [
+            {
+                'name': m.model_name,
+                'version': m.model_version,
+                'accuracy': m.accuracy,
+                'precision': m.precision,
+                'recall': m.recall,
+                'f1_score': m.f1_score,
+                'active': m.is_active,
+                'created': m.created_at,
             }
-        
-        except Exception as e:
-            print(f"Error during prediction: {str(e)}")
-            # Return default result on error
-            return {
-                'is_spam': False,
-                'confidence': 0,
-                'error': str(e)
-            }
-        
+            for m in qs
+        ]
+
+    def deactivate_all(self):
+        """
+        Deactivate all existing models in the DB.
+        """
+        SpamClassificationModel.objects.filter(is_active=True).update(is_active=False)
+
+    def cleanup(self, keep_latest=3):
+        """
+        Remove old model files, keeping only the latest N.
+        """
+        all_models = SpamClassificationModel.objects.order_by('-created_at')
+        for m in all_models[keep_latest:]:
+            for path in [m.model_file, m.feature_extraction_file]:
+                try:
+                    abs_path = os.path.join(self.base_dir, path)
+                    os.remove(abs_path)
+                except Exception:
+                    pass
+            m.delete()

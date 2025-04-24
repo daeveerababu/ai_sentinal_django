@@ -1,0 +1,10 @@
+Django>=4.2
+djangorestframework
+python-dotenv             # load your .env API keys
+virustotal-python         # VirusTotal API client
+pyclamd              # ClamAV integration
+scikit-learn              # ML algorithms
+pandas                    # data loading / manipulation
+numpy                     # numeric support
+nltk                      # text preprocessing
+joblib                    # model serialization
