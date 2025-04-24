@@ -49,7 +49,7 @@ INSTALLED_APPS = [
     
     # Custom apps
     'api',
-    'spam_classifier',
+    'security_analyzer',
 ]
 
 MIDDLEWARE = [
