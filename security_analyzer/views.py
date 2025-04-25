@@ -21,7 +21,7 @@ from .serializers import (
 from .utils.spam_classifier import SpamDetector
 from .utils.virus_scanner import VirusTotalScanner
 from .utils.supabase_client import SupabaseClient
-
+from rest_framework.settings import api_settings
 
 class GuestLoginAPIView(APIView):
     """Generate a guest user token for limited scans."""
@@ -41,7 +41,7 @@ class SecurityScanViewSet(viewsets.ModelViewSet):
     """
     queryset = SecurityScan.objects.all()
     serializer_class = SecurityScanSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = api_settings.DEFAULT_PERMISSION_CLASSES
 
     @action(detail=False, methods=['post'], parser_classes=[MultiPartParser])
     def scan(self, request):
@@ -109,7 +109,7 @@ class SecurityScanViewSet(viewsets.ModelViewSet):
 
 class FileScanAPIView(APIView):
     """Endpoint to upload and scan a file via VirusTotal."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = api_settings.DEFAULT_PERMISSION_CLASSES
     parser_classes = [MultiPartParser]
 
     def post(self, request):
@@ -126,7 +126,7 @@ class FileScanAPIView(APIView):
 
 class FileInfoAPIView(APIView):
     """Endpoint to fetch file report by SHA-256 hash."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = api_settings.DEFAULT_PERMISSION_CLASSES
 
     def get(self, request, file_hash):
         try:
@@ -138,7 +138,7 @@ class FileInfoAPIView(APIView):
 
 class FileRescanAPIView(APIView):
     """Endpoint to rescan an existing file by SHA-256."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = api_settings.DEFAULT_PERMISSION_CLASSES
 
     def post(self, request, file_hash):
         try:
@@ -150,7 +150,7 @@ class FileRescanAPIView(APIView):
 
 class UrlAnalyzeAPIView(APIView):
     """Endpoint to submit and analyze a URL via VirusTotal."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = api_settings.DEFAULT_PERMISSION_CLASSES
 
     def post(self, request):
         url = request.data.get('url')
@@ -166,7 +166,7 @@ class UrlAnalyzeAPIView(APIView):
 
 class UrlRescanAPIView(APIView):
     """Endpoint to rescan a URL by analysis ID."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = api_settings.DEFAULT_PERMISSION_CLASSES
 
     def post(self, request, url_id):
         try:
@@ -178,7 +178,7 @@ class UrlRescanAPIView(APIView):
 
 class DomainInfoAPIView(APIView):
     """Endpoint to fetch domain info via VirusTotal."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = api_settings.DEFAULT_PERMISSION_CLASSES
 
     def get(self, request, domain):
         try:
@@ -190,7 +190,7 @@ class DomainInfoAPIView(APIView):
 
 class IpInfoAPIView(APIView):
     """Endpoint to fetch IP address info via VirusTotal."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = api_settings.DEFAULT_PERMISSION_CLASSES
 
     def get(self, request, ip_address):
         try:
@@ -202,7 +202,7 @@ class IpInfoAPIView(APIView):
 
 class IpRescanAPIView(APIView):
     """Endpoint to rescan an IP address via VirusTotal."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = api_settings.DEFAULT_PERMISSION_CLASSES
 
     def post(self, request, ip_address):
         try:
@@ -214,7 +214,7 @@ class IpRescanAPIView(APIView):
 
 class SpamDetectionAPIView(APIView):
     """Endpoint for ML-based spam/ham classification."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = api_settings.DEFAULT_PERMISSION_CLASSES
 
     def post(self, request):
         serializer = SpamPredictionSerializer(data=request.data)
@@ -245,7 +245,7 @@ class SecurityThreatViewSet(viewsets.ModelViewSet):
     """
     queryset = SecurityThreat.objects.all()
     serializer_class = SecurityThreatSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = api_settings.DEFAULT_PERMISSION_CLASSES
 
     @action(detail=True, methods=['post'])
     def resolve(self, request, pk=None):

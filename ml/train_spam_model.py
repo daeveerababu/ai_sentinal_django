@@ -1,4 +1,17 @@
 import os
+import sys
+import django
+
+# Dynamically set project base directory (2 levels up from /ml/)
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(BASE_DIR)
+
+# Set environment variable for Django
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
+
+# Setup Django
+django.setup()
+
 import time
 import joblib
 import pandas as pd
@@ -12,6 +25,9 @@ from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from security_analyzer.models import SpamClassificationModel
 from django.utils import timezone
+
+# Django setup
+
 
 # Directory setup
 BASE_DIR = settings.BASE_DIR
