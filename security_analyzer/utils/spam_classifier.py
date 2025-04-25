@@ -16,6 +16,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 
 
 class SpamDetector:
+
     """
     Comprehensive spam detector leveraging scikit-learn.
     Supports Naive Bayes, SVM, and RandomForest classifiers.

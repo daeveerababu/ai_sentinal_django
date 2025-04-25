@@ -8,3 +8,5 @@ pandas                    # data loading / manipulation
 numpy                     # numeric support
 nltk                      # text preprocessing
 joblib                    # model serialization
+requests>=2.28.0
+
