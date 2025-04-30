@@ -17,7 +17,7 @@ class SupabaseClient:
     """
     def __init__(self, url=None, key=None):
         self.url = url or settings.SUPABASE_URL
-        self.key = key or settings.SUPABASE_KEY
+        self.key = key or settings.SUPABASE_API_KEY
         self.connected = False
         if SUPABASE_AVAILABLE and self.url and self.key:
             try:
