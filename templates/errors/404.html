@@ -1,0 +1,55 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 - Page Not Found | AI Sentinel</title>
+    <link rel="stylesheet" href="{% static "css/error-pages.css" %}">
+</head>
+<body>
+    <div class="error-container">
+        <nav class="top-nav">
+            <div class="logo">
+                <a href="/">AI Sentinel</a>
+            </div>
+            <div class="nav-links">
+                <a href="/analyzer/">Security Analysis</a>
+                <a href="/swagger/">API Docs</a>
+                <a href="/admin/">Admin</a>
+            </div>
+        </nav>
+        
+        <main class="error-content">
+            <div class="error-code">404</div>
+            <h1>Page Not Found</h1>
+            <p class="error-message">The page you're looking for couldn't be found on our server.</p>
+            
+            <div class="search-box">
+                <input type="text" placeholder="Search AI Sentinel...">
+                <button type="submit">Search</button>
+            </div>
+            
+            <div class="quick-links">
+                <h2>You might want to:</h2>
+                <ul>
+                    <li><a href="/">Return to Homepage</a></li>
+                    <li><a href="/analyzer/">Run Security Analysis</a></li>
+                    <li><a href="/swagger/">View API Documentation</a></li>
+                    <li><a href="/contact/">Contact Support</a></li>
+                </ul>
+            </div>
+        </main>
+        
+        <footer>
+            <div class="support-info">
+                <p>Need help? Contact our support team:</p>
+                <a href="mailto:support@aisentinel.com">support@aisentinel.com</a>
+            </div>
+            <div class="copyright">
+                © 2025 AI Sentinel. All rights reserved.
+            </div>
+        </footer>
+    </div>
+</body>
+</html>

@@ -10,7 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY SETTINGS
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "unsafe-secret-key-for-dev")
-DEBUG = os.getenv("DEBUG", "True").lower() == "true"
+DEBUG = False
 ALLOWED_HOSTS = ["*"]
 
 # Application definition
@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     # Third-party
     'rest_framework',
     'corsheaders',
+    'drf_yasg',
 
     # Local apps
     'security_analyzer',

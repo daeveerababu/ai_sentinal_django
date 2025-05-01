@@ -1,0 +1,633 @@
+openapi: 3.0.0
+info:
+  title: AI Sentinel Security Analysis API
+  description: |
+    API for security analysis including file scanning, URL analysis, domain information, 
+    IP address scanning, and spam detection. The API leverages VirusTotal for security
+    scans and incorporates ML-based spam detection.
+  version: 1.0.0
+  contact:
+    name: AI Sentinel Team
+
+servers:
+  - url: /analyzer
+    description: Base API path
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Token
+  
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        detail:
+          type: string
+          description: Detailed error information
+    
+    SecurityScan:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        scan_type:
+          type: string
+          enum: [virus, url, ip, combined]
+        content:
+          type: string
+          description: URL or IP being scanned
+        file_hash:
+          type: string
+          nullable: true
+          description: SHA-256 hash for file scans
+        file_name:
+          type: string
+          nullable: true
+        scan_status:
+          type: string
+          enum: [processing, completed, failed]
+        result_data:
+          type: object
+          description: JSON response from scanning service
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    
+    SecurityThreat:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        scan_id:
+          type: integer
+          format: int64
+        threat_type:
+          type: string
+        severity:
+          type: string
+          enum: [low, medium, high, critical]
+        description:
+          type: string
+        is_resolved:
+          type: boolean
+        detected_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+    
+    SpamPrediction:
+      type: object
+      properties:
+        text:
+          type: string
+          description: Text to analyze for spam
+      required:
+        - text
+    
+    SpamResult:
+      type: object
+      properties:
+        is_spam:
+          type: boolean
+          description: Whether the text is classified as spam
+        confidence:
+          type: number
+          format: float
+          description: Confidence level of the classification
+        spam_score:
+          type: number
+          format: float
+          description: Spam probability score
+        ham_score:
+          type: number
+          format: float
+          description: Non-spam (ham) probability score
+    
+    ScanRequest:
+      type: object
+      properties:
+        url:
+          type: string
+          description: URL to scan
+        ip:
+          type: string
+          description: IP address to scan
+      
+    FileInfo:
+      type: object
+      description: VirusTotal file scan results
+      
+    UrlInfo:
+      type: object
+      description: VirusTotal URL scan results
+      
+    DomainInfo:
+      type: object
+      description: VirusTotal domain scan results
+      
+    IpInfo:
+      type: object
+      description: VirusTotal IP scan results
+      
+security:
+  - BearerAuth: []
+
+paths:
+  /guest-login:
+    post:
+      tags:
+        - Authentication
+      summary: Generate a guest user token
+      description: Creates a guest user account and returns an authentication token
+      security: []
+      responses:
+        '200':
+          description: Successfully generated token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+  
+  /scans:
+    get:
+      tags:
+        - Security Scans
+      summary: List all security scans
+      description: Returns a list of all security scans
+      responses:
+        '200':
+          description: List of security scans
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SecurityScan'
+    post:
+      tags:
+        - Security Scans
+      summary: Create a new security scan
+      description: Creates a new security scan record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecurityScan'
+      responses:
+        '201':
+          description: Successfully created scan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityScan'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /scans/{id}:
+    get:
+      tags:
+        - Security Scans
+      summary: Get a specific security scan
+      description: Returns details of a specific security scan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Security scan details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityScan'
+        '404':
+          description: Scan not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /scans/scan:
+    post:
+      tags:
+        - Security Scans
+      summary: Perform a unified security scan
+      description: Scans file, URL, and/or IP address in a single request
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File to scan
+                url:
+                  type: string
+                  description: URL to analyze
+                ip:
+                  type: string
+                  description: IP address to check
+      responses:
+        '200':
+          description: Successful scan results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityScan'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Scan failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /threats:
+    get:
+      tags:
+        - Security Threats
+      summary: List all security threats
+      description: Returns a list of all detected security threats
+      responses:
+        '200':
+          description: List of security threats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SecurityThreat'
+    post:
+      tags:
+        - Security Threats
+      summary: Create a new security threat
+      description: Creates a new security threat record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecurityThreat'
+      responses:
+        '201':
+          description: Successfully created threat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityThreat'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /threats/{id}:
+    get:
+      tags:
+        - Security Threats
+      summary: Get a specific security threat
+      description: Returns details of a specific security threat
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Security threat details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityThreat'
+        '404':
+          description: Threat not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /threats/{id}/resolve:
+    post:
+      tags:
+        - Security Threats
+      summary: Resolve a security threat
+      description: Marks a security threat as resolved
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Threat resolved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: resolved
+        '404':
+          description: Threat not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /threats/unresolved:
+    get:
+      tags:
+        - Security Threats
+      summary: List unresolved security threats
+      description: Returns a list of unresolved security threats
+      responses:
+        '200':
+          description: List of unresolved security threats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SecurityThreat'
+  
+  /spam:
+    post:
+      tags:
+        - Spam Detection
+      summary: Detect spam in text
+      description: Uses ML to classify text as spam or ham
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SpamPrediction'
+      responses:
+        '200':
+          description: Spam detection result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpamResult'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Detection failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /files/scan:
+    post:
+      tags:
+        - File Analysis
+      summary: Scan a file
+      description: Uploads and scans a file for security threats
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File to scan
+      responses:
+        '200':
+          description: File scan result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileInfo'
+        '400':
+          description: No file provided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Scan failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /files/info/{file_hash}:
+    get:
+      tags:
+        - File Analysis
+      summary: Get file information
+      description: Returns information about a previously scanned file
+      parameters:
+        - name: file_hash
+          in: path
+          required: true
+          description: SHA-256 hash of the file
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileInfo'
+        '500':
+          description: Request failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /files/rescan/{file_hash}:
+    post:
+      tags:
+        - File Analysis
+      summary: Rescan a file
+      description: Requests a rescan of a previously analyzed file
+      parameters:
+        - name: file_hash
+          in: path
+          required: true
+          description: SHA-256 hash of the file
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Rescan result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileInfo'
+        '500':
+          description: Rescan failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /urls/analyze:
+    post:
+      tags:
+        - URL Analysis
+      summary: Analyze a URL
+      description: Scans a URL for security threats
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                  description: URL to analyze
+              required:
+                - url
+      responses:
+        '200':
+          description: URL analysis result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UrlInfo'
+        '400':
+          description: No URL provided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Analysis failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /urls/rescan/{url_id}:
+    post:
+      tags:
+        - URL Analysis
+      summary: Rescan a URL
+      description: Requests a rescan of a previously analyzed URL
+      parameters:
+        - name: url_id
+          in: path
+          required: true
+          description: ID of the URL analysis
+          schema:
+            type: string
+      responses:
+        '200':
+          description: URL rescan result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UrlInfo'
+        '500':
+          description: Rescan failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /domains/info/{domain}:
+    get:
+      tags:
+        - Domain Analysis
+      summary: Get domain information
+      description: Returns security information about a domain
+      parameters:
+        - name: domain
+          in: path
+          required: true
+          description: Domain to analyze
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Domain information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainInfo'
+        '500':
+          description: Request failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /ip_addresses/info/{ip_address}:
+    get:
+      tags:
+        - IP Analysis
+      summary: Get IP information
+      description: Returns security information about an IP address
+      parameters:
+        - name: ip_address
+          in: path
+          required: true
+          description: IP address to analyze
+          schema:
+            type: string
+      responses:
+        '200':
+          description: IP information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IpInfo'
+        '500':
+          description: Request failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
