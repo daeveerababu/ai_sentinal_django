@@ -10,7 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY SETTINGS
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "unsafe-secret-key-for-dev")
-DEBUG = False
+DEBUG = True  # Temporarily enabled for testing
 ALLOWED_HOSTS = ["*"]
 
 # Application definition
@@ -94,7 +94,10 @@ USE_TZ = True
 
 # Static files
 STATIC_URL = 'static/'
-
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, 'static'),
+]
 # Default auto primary key
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

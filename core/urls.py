@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import path, include, re_path
 from django.conf import settings
 from django.views.static import serve
+from .views import home_view
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
@@ -25,6 +26,7 @@ schema_view = get_schema_view(
 )
 
 urlpatterns = [
+    path('', home_view, name='home'),  # Homepage
     path('admin/', admin.site.urls),
     path('analyzer/', include('security_analyzer.urls')),
     
