@@ -23,7 +23,7 @@ from .utils.virus_scanner import VirusTotalScanner
 from .utils.supabase_client import SupabaseClient
 from rest_framework.settings import api_settings
 
-class GuestLoginAPIView(APIView):
+class GuestLoginAPIView_sb(APIView):
     """Generate a guest user token for limited scans."""
     permission_classes = [AllowAny]
     authentication_classes = []
@@ -33,6 +33,54 @@ class GuestLoginAPIView(APIView):
         user = User.objects.create_user(username=username)
         token, _ = Token.objects.get_or_create(user=user)
         return Response({"token": token.key})
+        
+class GuestLoginAPIView(APIView):
+    """Generate a guest user token for limited scans."""
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def options(self, request, *args, **kwargs):
+        """Handle preflight OPTIONS requests for CORS"""
+        response = Response()
+        response["Access-Control-Allow-Origin"] = "*"  # In production, limit this to your frontend domain
+        response["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-Requested-With, Accept"
+        response["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        response["Access-Control-Max-Age"] = "86400"  # 24 hours cache for preflight response
+        return response
+
+    def post(self, request):
+        """Generate a new guest user and return auth token"""
+        # Create a random username
+        username = f"guest_{uuid.uuid4().hex[:8]}"
+        
+        try:
+            # Create user with a random username
+            user = User.objects.create_user(username=username)
+            
+            # Generate token for this user
+            token, _ = Token.objects.get_or_create(user=user)
+            
+            # Create response
+            response = Response({
+                "token": token.key,
+                "user": {
+                    "id": user.id,
+                    "username": username,
+                    "is_guest": True
+                }
+            })
+            
+            # Add CORS headers
+            response["Access-Control-Allow-Origin"] = "*"  # In production, restrict to your frontend domain
+            response["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-Requested-With, Accept"
+            
+            return response
+            
+        except Exception as e:
+            return Response(
+                {"error": f"Failed to create guest user: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class SecurityScanViewSet(viewsets.ModelViewSet):
