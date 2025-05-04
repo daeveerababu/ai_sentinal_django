@@ -20,6 +20,9 @@ router.register(r'threats', SecurityThreatViewSet, basename='security-threat')
 
 urlpatterns = [
     # Core ViewSet routes
+    # Authentication
+    path('guest-login/', GuestLoginAPIView.as_view(), name='guest-login'),
+    
     path('', include(router.urls)),
 
     # Spam detection (ML)
