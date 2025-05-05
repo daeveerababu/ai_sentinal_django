@@ -11,7 +11,7 @@ from .views import (
     UrlRescanAPIView,
     DomainInfoAPIView,
     IpInfoAPIView,
-    IpRescanAPIView,
+    IpRescanAPIView,GuestLoginAPIView,
 )
 
 router = DefaultRouter()
